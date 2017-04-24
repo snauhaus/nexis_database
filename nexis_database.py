@@ -12,7 +12,7 @@ def read_data(file):
     return(text)
 
 def main():
-    """docstring for main"""
+    """docstring for main """
     dir_files = os.path.join(os.getcwd(), ".lexisparse")
 
     conn = sqlite3.connect('Nexis Articles.db')
