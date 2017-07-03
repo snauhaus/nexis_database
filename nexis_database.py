@@ -9,7 +9,7 @@ import sqlite3
 import progressbar
 import subprocess
 import zipfile, zlib
-import csv
+import csv, pandas
 
 class NexisDatabase(object):
     """docstring for NexisDatabase
@@ -69,6 +69,8 @@ class NexisDatabase(object):
         q_signs = ', '.join("?"*len_data)
         com="INSERT INTO {tn} ({cn}) VALUES ({dt})".\
                     format(tn=table_name, cn=column_names, dt=q_signs)
+        print(com)
+        print([type(d) for d in data])
         if len_data != len(columns):
             print("Not enough values provided")
         else:
@@ -105,22 +107,28 @@ class NexisDatabase(object):
         """Add CSV file to a table in the database
 
         """
-        with open(csv_file, 'r') as f:
-            reader = csv.reader(f)
-            
-            with progressbar.ProgressBar(max_value=len(data)) as bar:
-                for i, row in enumerate(reader):
-                    if i == 1:
-                        if create_table is True:
-                            header=row
-                            self.create_table(table_name, header[0])
-                            for h in header[1:]:
-                                self.add_column(table_name, h)
-                        else:
-                            bar.update(i)
-                            next
-                    self.insert_data(table_name, *row, commit=False)
-                    bar.update(i)
+        if create_table:
+            with open(csv_file, 'r') as f:
+                reader = csv.reader(f)
+                header=reader.__next__()
+                self.create_table(table_name, header[0])
+                for h in header[1:]:
+                    self.add_column(table_name, h)
+       df = pandas.read_csv(csv_file)
+       df.to_sql(table_name, self.con, if_exists='append', index=False)
+        # num_lines = len(open(csv_file, 'r').readlines())
+        #     else:
+        #         reader.__next__()
+        #     with progressbar.ProgressBar(max_value=num_lines) as bar:
+        #         for i, row in enumerate(reader):
+        #             print(*row)
+        #             self.insert_data(table_name, *row, commit=False)
+        #             bar.update(i)
+        # with open('data.csv','rb') as fin: # `with` statement available in 2.5+
+        #     # csv.DictReader uses first line in file for column headings by default
+        #     dr = csv.DictReader(fin) # comma is default delimiter
+        #     to_db = [(i['col1'], i['col2']) for i in dr]
+        self.con.commit()
 
     def execute(self, command):
         """Execute command in db
@@ -151,12 +159,12 @@ class NexisDatabase(object):
         """
         self.c.execute('PRAGMA TABLE_INFO({})'.format(table_name))
         info = [list(tup) for tup in self.c.fetchall()]
-        print("\nColumn Info:\n{:10s}{:10s}{:10s}{:10s}{:10s}{:10s}"\
+        print("\nColumn Info:\n{:10s}{:25s}{:10s}{:10s}{:12s}{:10s}"\
                .format("ID", "Name", "Type", "NotNull", "DefaultVal", "PrimaryKey"))
 
         for col in info:
             print_text=tuple(str(t) for t in col)
-            print('{:10s}{:10s}{:10s}{:10s}{:10s}{:10s}'.format(*print_text))
+            print('{:10s}{:25s}{:10s}{:10s}{:12s}{:10s}'.format(*print_text))
     
     def get_column_names(self, table_name):
         """returns columns in table"""
