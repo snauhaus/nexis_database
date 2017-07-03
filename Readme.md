@@ -1,6 +1,6 @@
 Nexis database
 ==============
-Create sqlite database from nexis articles preprocessed using [lexisparse](https://github.com/FreshRamen/lexisparse).
+Create SQlite3 database from nexis articles preprocessed using [lexisparse](https://github.com/FreshRamen/lexisparse).
 
 Provides functions and handlers to interact with the database.
 
