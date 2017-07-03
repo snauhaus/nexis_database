@@ -15,12 +15,14 @@ class NexisDatabase(object):
     """docstring for NexisDatabase
     
     An object that allows python to interact with a database of nexis articles
-    as output by the script lexisparse
+    
+    Primarily to store articles cleaned by lexisparse
+    
+    But it could be used with any other large folder of text files
     
     """
-    def __init__(self, file_name='Nexis Articles.db', primary_key=str()):
+    def __init__(self, file_name='Nexis Articles.db'):
         self.__name__ = file_name
-        self.primary_key=primary_key
         
     def read_data(self, file):
         file_con = open(file, 'r')
@@ -41,16 +43,9 @@ class NexisDatabase(object):
         
         """
         db_name=self.__name__
-        self.primary_key=primary_key
         self.c.execute('CREATE TABLE {tn} ({nf} {ft} PRIMARY KEY)'\
                 .format(tn=table_name, nf=primary_key, ft=key_type))
         self.con.commit()
-        
-    def set_primary_key(self, primary_key):
-        """Retrieve name of primary key if provided
-        
-        """
-        self.primary_key=primary_key
         
     def add_column(self, table_name, new_column, column_type="TEXT"):
         """Add column to table"""
@@ -59,9 +54,8 @@ class NexisDatabase(object):
         self.con.commit()
         
     def insert_data(self, table_name, *data, commit=True):
-        """docstring for insert
+        """Insert a row of data into database table
 
-        This could be tricky if text contains special characters, or commas perhaps even...
         """
         columns=self.get_column_names(table_name)
         len_data = len(data)
@@ -107,7 +101,7 @@ class NexisDatabase(object):
         """Add CSV file to a table in the database
 
         """
-        if create_table:
+        if create_table: # Ensure first columns parsed as primary key
             with open(csv_file, 'r') as f:
                 reader = csv.reader(f)
                 header=reader.__next__()
@@ -197,7 +191,7 @@ class NexisDatabase(object):
         Compress the sql database in same directory
 
         Defaults to zip, because its much faster than 7zip, although
-        it also achieves a lower compression
+        it doesn't achieve as high a compression
 
         The zip method will delete the database after compression
         """
@@ -213,7 +207,6 @@ class NexisDatabase(object):
 
         Decompress the sql database from 7z
 
-        The zip method will delete the archive after decompression
         """
         if method=="7z":
             filename=self.__name__
