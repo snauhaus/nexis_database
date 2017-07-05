@@ -57,14 +57,12 @@ class NexisDatabase(object):
         """Insert a row of data into database table
 
         """
-        columns=self.get_column_names(table_name)
+        columns=self.list_columns(table_name)
         len_data = len(data)
         column_names=', '.join(columns)
         q_signs = ', '.join("?"*len_data)
         com="INSERT INTO {tn} ({cn}) VALUES ({dt})".\
                     format(tn=table_name, cn=column_names, dt=q_signs)
-        print(com)
-        print([type(d) for d in data])
         if len_data != len(columns):
             print("Not enough values provided")
         else:
@@ -108,8 +106,8 @@ class NexisDatabase(object):
                 self.create_table(table_name, header[0])
                 for h in header[1:]:
                     self.add_column(table_name, h)
-       df = pandas.read_csv(csv_file)
-       df.to_sql(table_name, self.con, if_exists='append', index=False)
+        df = pandas.read_csv(csv_file)
+        df.to_sql(table_name, self.con, if_exists='append', index=False)
         # num_lines = len(open(csv_file, 'r').readlines())
         #     else:
         #         reader.__next__()
@@ -123,7 +121,34 @@ class NexisDatabase(object):
         #     dr = csv.DictReader(fin) # comma is default delimiter
         #     to_db = [(i['col1'], i['col2']) for i in dr]
         self.con.commit()
-
+    
+    def insert_pandas(self, table_name, df, create_table=True):
+        """Inserts Pandas DataFrame object to a new or existing table"""
+        if create_table:
+            header = list(df.columns.values)
+            self.create_table(table_name, header[0])
+            for h in header[1:]:
+                self.add_column(table_name, h)
+        df.to_sql(table_name, self.con, if_exists='append', index = False)
+        self.con.commit()
+    
+    
+    def get_paragraph_count(self, table_name, text_col="Text"):
+        """Function returns the number of paragraphs per 'Text' in 'Documents'
+        
+        """
+        num_docs = self.count_rows(table_name)
+        cmd="SELECT {} FROM {} LIMIT ".format(text_col,table_name)
+        paras = []
+        with progressbar.ProgressBar(max_value=num_docs) as bar:
+            for i in range(1,num_docs+1):
+                self.execute(cmd+str(i))
+                text = self.c.fetchall()
+                pars = text[0][0].count('\n\n')+1
+                paras.append(pars)
+                bar.update(i)
+        return(paras)
+    
     def execute(self, command):
         """Execute command in db
         
@@ -147,6 +172,13 @@ class NexisDatabase(object):
             print('\nTotal rows: {}'.format(count[0][0]))
         return count[0][0]
     
+    def list_tables(self):
+        """Returns list of all tables in database
+        
+        """
+        self.c.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        print(self.c.fetchall())
+    
     def column_info(self, table_name):
         """ Returns a list of tuples with column informations:
             (id, name, type, notnull, default_value, primary_key)
@@ -160,13 +192,13 @@ class NexisDatabase(object):
             print_text=tuple(str(t) for t in col)
             print('{:10s}{:25s}{:10s}{:10s}{:12s}{:10s}'.format(*print_text))
     
-    def get_column_names(self, table_name):
-        """returns columns in table"""
+    def list_columns(self, table_name):
+        """returns a list of columns in the table"""
         self.c.execute('PRAGMA TABLE_INFO({})'.format(table_name))
         names = [tup[1] for tup in self.c.fetchall()]
         return names
     
-    def values_in_col(self, table_name, print_out=True):
+    def column_value_count(self, table_name, print_out=True):
         """ Returns a dictionary with columns as keys and the number of not-null
             entries as associated values.
         """
@@ -185,10 +217,8 @@ class NexisDatabase(object):
             for i in col_dict.items():
                 print('{}: {}'.format(i[0], i[1]))  
 
-    def pack_database(self, method="zip"):
-        """docstring for pack_database
-
-        Compress the sql database in same directory
+    def pack(self, method="zip"):
+        """Compress the sql database in same directory
 
         Defaults to zip, because its much faster than 7zip, although
         it doesn't achieve as high a compression
@@ -202,10 +232,8 @@ class NexisDatabase(object):
             zipfile.ZipFile(filename+'.zip','w',compression=zipfile.ZIP_DEFLATED).write(filename)
             if zipfile.ZipFile(filename+'.zip','r').testzip() is None: os.remove(filename)
 
-    def unpack_database(self, method="zip"):
-        """docstring for unpack_database
-
-        Decompress the sql database from 7z
+    def unpack(self, method="zip"):
+        """Decompress the sql database from 7z
 
         """
         if method=="7z":
