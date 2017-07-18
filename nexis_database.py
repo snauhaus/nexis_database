@@ -154,7 +154,18 @@ class NexisDatabase(object):
         
         """
         self.c.execute(command)
-    
+        
+    def fetch(self, what = "all"):
+        """docstring for fetch"""
+        if what.upper() == "ALL":
+            return self.c.fetchall()
+        elif what.upper() == "MANY":
+            return self.c.fetchmany()    
+        elif what.upper() == "ONE":
+            return self.c.fetchone()
+        else:
+            print("what must be element of 'all', 'many' or 'one'.")
+            
     def select(self, table_name):
         """docstring for select"""
         self.c.execute('SELECT * FROM {tn}'.\
