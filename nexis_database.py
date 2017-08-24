@@ -123,7 +123,10 @@ class NexisDatabase(object):
         self.con.commit()
     
     def insert_pandas(self, table_name, df, create_table=True):
-        """Inserts Pandas DataFrame object to a new or existing table"""
+        """Inserts Pandas DataFrame object to a new or existing table
+        
+        create_table uses first column as primary key
+        """
         if create_table:
             header = list(df.columns.values)
             self.create_table(table_name, header[0])
@@ -149,11 +152,17 @@ class NexisDatabase(object):
                 bar.update(i)
         return(paras)
     
-    def execute(self, command):
+    def execute(self, command, commit=False):
         """Execute command in db
         
         """
         self.c.execute(command)
+        if commit is True:
+            self.commit()
+    
+    def commit(self):
+        """Commit command"""
+        self.con.commit()
         
     def fetch(self, what = "all"):
         """docstring for fetch"""
@@ -228,14 +237,16 @@ class NexisDatabase(object):
             for i in col_dict.items():
                 print('{}: {}'.format(i[0], i[1]))  
 
-    def pack(self, method="zip"):
+    def pack(self, method="zip", close_con=True):
         """Compress the sql database in same directory
+        Closes connection by default
 
         Defaults to zip, because its much faster than 7zip, although
         it doesn't achieve as high a compression
 
         The zip method will delete the database after compression
         """
+        if close_con is True: self.close()
         filename=self.__name__
         if method=="7z":
             subprocess.call(['7z', 'a', filename+'.7z', filename])
