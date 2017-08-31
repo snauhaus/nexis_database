@@ -11,7 +11,7 @@ import subprocess
 import zipfile, zlib
 import csv, pandas
 
-class NexisDatabase(object):
+class DBORM(object):
     """docstring for NexisDatabase
     
     An object that allows python to interact with a database of nexis articles
@@ -135,13 +135,13 @@ class NexisDatabase(object):
         df.to_sql(table_name, self.con, if_exists='append', index = False)
         self.con.commit()
     
-    
-    def get_paragraph_count(self, table_name, text_col="Text"):
+   
+    def get_paragraph_count(self, table_name, col_name="Text", print_out=True):
         """Function returns the number of paragraphs per 'Text' in 'Documents'
         
         """
         num_docs = self.count_rows(table_name)
-        cmd="SELECT {} FROM {} LIMIT ".format(text_col,table_name)
+        cmd="SELECT {} FROM {} LIMIT ".format(col_name,table_name)
         paras = []
         with progressbar.ProgressBar(max_value=num_docs) as bar:
             for i in range(1,num_docs+1):
@@ -177,10 +177,17 @@ class NexisDatabase(object):
             
     def select(self, table_name):
         """docstring for select"""
-        self.c.execute('SELECT * FROM {tn}'.\
+        self.execute('SELECT * FROM {tn}'.\
                 format(tn=table_name))
         all_rows = self.c.fetchall()
         return all_rows
+    
+    def select_where(self, table_name, col_name, match_string):
+        """docstring for select_where"""
+        cmd="SELECT * FROM {} WHERE {} LIKE '%{}%'".format(table_name, col_name, match_string)
+        self.execute(cmd)
+        result = self.fetch()
+        return result
        
     def count_rows(self, table_name, print_out=False):
         """ Returns the total number of rows in the database
@@ -191,6 +198,20 @@ class NexisDatabase(object):
         if print_out:
             print('\nTotal rows: {}'.format(count[0][0]))
         return count[0][0]
+    
+    def count_rows_where(self, table_name, col_name, match_txt=None):
+        """Returns the total number of rows in the database containing `match_txt`
+        
+        """
+        cmd="SELECT COUNT(*) FROM {} WHERE {} LIKE '%{}%'".format(table_name, col_name, match_txt)
+        self.execute(cmd)
+        count =self.fetch()
+        return count[0][0]            
+    
+    def get_articles_count(self, match_txt=None, table_name="Documents", col_name="Text"):
+        """Shorthand function for count_rows_where() function for articles containing some text"""
+        result = self.count_rows_where(table_name, col_name, match_txt)
+        return result
     
     def list_tables(self):
         """Returns list of all tables in database
@@ -267,4 +288,4 @@ class NexisDatabase(object):
 
 
 
-
+NexisDatabase = DBORM # For backwards compatibility
