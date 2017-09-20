@@ -11,7 +11,7 @@ import subprocess
 import zipfile, zlib
 import csv, pandas
 
-class DBORM(object):
+class dbORM(object):
     """docstring for NexisDatabase
     
     An object that allows python to interact with a database of nexis articles
@@ -182,9 +182,9 @@ class DBORM(object):
         all_rows = self.c.fetchall()
         return all_rows
     
-    def select_where(self, table_name, col_name, match_string):
+    def select_where(self, table_name, col_name, match_string, limit = 5):
         """docstring for select_where"""
-        cmd="SELECT * FROM {} WHERE {} LIKE '%{}%'".format(table_name, col_name, match_string)
+        cmd="SELECT * FROM {} WHERE {} LIKE '%{}%' LIMIT {}".format(table_name, col_name, match_string, limit)
         self.execute(cmd)
         result = self.fetch()
         return result
@@ -288,4 +288,4 @@ class DBORM(object):
 
 
 
-NexisDatabase = DBORM # For backwards compatibility
+NexisDatabase = dbORM # For backwards compatibility
