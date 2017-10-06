@@ -9,11 +9,13 @@ import sqlite3
 import progressbar
 import subprocess
 import zipfile, zlib
-import csv, pandas
+import csv
+import pandas
+import numpy
+
 
 class dbORM(object):
-    """docstring for NexisDatabase
-    
+    """   
     An object that allows python to interact with a database of nexis articles
     
     Primarily to store articles cleaned by lexisparse
@@ -23,55 +25,120 @@ class dbORM(object):
     """
     def __init__(self, file_name='Nexis Articles.db'):
         self.__name__ = file_name
+    
+    """
+    Basic database interactions.    
+    
+    """
         
+    def connect(self, check_packed=True):
+        """Connect to a database.
+        Creates connection object (con) and cursor (c)
+        
+        If check_packed is True, dbORM will check first if there is a zipped db object with the same name and unpack if true.
+        """
+        
+        if check_packed:
+            zip_name = self.__name__ + ".zip"
+            if not os.path.isfile(self.__name__) and os.path.isfile(zip_name):
+                print("Unpacking existing database:",zip_name)
+                self.unpack()
+        self.con = sqlite3.connect(self.__name__)
+        self.c = self.con.cursor()
+        print("Connection established")
+        
+    def close(self):
+        """Close database connection"""
+        self.c.close()
+        
+    def execute(self, command, commit=False):
+        """Execute a command
+        
+        """
+        self.c.execute(command)
+        if commit:
+            self.commit()
+    
+    def commit(self):
+        """Commit to database
+        
+        """
+        self.con.commit()
+        
+    def fetch(self, what = "all", size=None):
+        """Fetch data from database.
+        What can be "ALL", "MANY", or "ONE". Defaults to ALL
+        
+        """
+        if what.upper() == "ALL":
+            return self.c.fetchall()
+        elif what.upper() == "MANY":
+            if size is not None:
+                return self.c.fetchmany(size)
+            else:
+                return self.c.fetchmany()
+        elif what.upper() == "ONE":
+            return self.c.fetchone()
+        else:
+            print("what must be element of 'all', 'many' or 'one'.")
+    
+    def drop_table(self, table_name):
+        """
+        Shorthand for dropping a table.
+        Be careful with this.
+        
+        """
+        cmd="DROP TABLE {}".format(table_name)
+        self.execute(cmd)
+        self.commit()
+    
+    
+    """
+    Miscellaneous functions    
+        
+    """
+            
     def read_data(self, file):
+        """
+        Read a text file from disk
+        
+        """
         file_con = open(file, 'r')
         text = file_con.read()
         return(text)
     
-    def connect(self):
-        """docstring for make_database"""
-        self.con = sqlite3.connect(self.__name__)
-        self.c = self.con.cursor()
-        
-    def close(self):
-        """docstring for close"""
-        self.c.close()
     
-    def create_table(self, table_name, primary_key, key_type="TEXT"):
-        """Create a table with one primary key column
+    """
+    Adding new tables        
+            
+    """
+    
+    def create_table(self, table_name, col_names, col_types=None, col_constraints=None, other_columns=None, overwrite=False):
+        """Create a table in the database
+        col_names must be provided
+        col_types defaults to TXT
+        col_constraints defaults to 
+        other_columns can manually specifiy columns 
         
+        Example usage: 
+        
+            db.create_table('Sentiments', col_names = ["File", "Paragraph", "Text", "Sentiment"], col_types = ["TXT", "INT", "TXT", "INT"], other_columns = "PRIMARY KEY (File, Paragraph)")
+            
         """
-        db_name=self.__name__
-        self.c.execute('CREATE TABLE {tn} ({nf} {ft} PRIMARY KEY)'\
-                .format(tn=table_name, nf=primary_key, ft=key_type))
-        self.con.commit()
-        
-    def add_column(self, table_name, new_column, column_type="TEXT"):
-        """Add column to table"""
-        self.c.execute("ALTER TABLE {tn} ADD COLUMN '{cn}' {ct}"\
-                .format(tn=table_name, cn=new_column, ct=column_type))
-        self.con.commit()
-        
-    def insert_data(self, table_name, *data, commit=True):
-        """Insert a row of data into database table
-
-        """
-        columns=self.list_columns(table_name)
-        len_data = len(data)
-        column_names=', '.join(columns)
-        q_signs = ', '.join("?"*len_data)
-        com="INSERT INTO {tn} ({cn}) VALUES ({dt})".\
-                    format(tn=table_name, cn=column_names, dt=q_signs)
-        if len_data != len(columns):
-            print("Not enough values provided")
-        else:
-            try:
-                self.c.execute(com, data)
-            except sqlite3.IntegrityError:
-                print('ERROR: ID already exists in PRIMARY KEY column {}'.format(id_column))
-            if commit is True:
-                self.con.commit()
+        if overwrite:
+            self.drop_table(table_name)
+        ncols = len(col_names)
+        if col_types is None:
+            col_types = list(numpy.repeat("TXT", ncols))
+        if col_constraints is None:
+            col_constraints = list(numpy.repeat("", ncols))
+        query = [' '.join([cn, cp, cc]) for cn, cp, cc in zip(col_names, col_types, col_constraints)]
+        query = "CREATE TABLE {} (".format(table_name) + ', '.join(query)
+        if other_columns is not None:
+            query = ', '.join([query, other_columns])
+        query = query + ")"
+        self.execute(query)
+        self.commit()
     
     def insert_text_files(self, table_name, files_path, create_table=True):
         """Adds many text files into a table in the 
@@ -122,19 +189,52 @@ class dbORM(object):
         #     to_db = [(i['col1'], i['col2']) for i in dr]
         self.con.commit()
     
-    def insert_pandas(self, table_name, df, create_table=True):
+    def insert_pandas(self, table_name, df, overwrite=False):
         """Inserts Pandas DataFrame object to a new or existing table
         
-        create_table uses first column as primary key
+        Use create_table() first if column flags or so need to be set.
+        
+        If overwrite is True, overwrites existing table
         """
-        if create_table:
-            header = list(df.columns.values)
-            self.create_table(table_name, header[0])
-            for h in header[1:]:
-                self.add_column(table_name, h)
+        if overwrite:
+            try:
+                self.drop_table(table_name)
+            except:
+                print("No existing table found")
         df.to_sql(table_name, self.con, if_exists='append', index = False)
-        self.con.commit()
+        self.commit()
     
+    
+    """
+    Altering tables    
+        
+    """
+        
+    def add_column(self, table_name, new_column, column_type="TEXT"):
+        """Add column to table"""
+        self.c.execute("ALTER TABLE {tn} ADD COLUMN '{cn}' {ct}"\
+                .format(tn=table_name, cn=new_column, ct=column_type))
+        self.con.commit()
+        
+    def insert_data(self, table_name, *data, commit=True):
+        """Insert a row of data into database table
+
+        """
+        columns=self.list_columns(table_name)
+        len_data = len(data)
+        column_names=', '.join(columns)
+        q_signs = ', '.join("?"*len_data)
+        com="INSERT INTO {tn} ({cn}) VALUES ({dt})".\
+                    format(tn=table_name, cn=column_names, dt=q_signs)
+        if len_data != len(columns):
+            print("Not enough values provided")
+        else:
+            try:
+                self.c.execute(com, data)
+            except sqlite3.IntegrityError:
+                print('ERROR: ID already exists in PRIMARY KEY column {}'.format(id_column))
+            if commit is True:
+                self.con.commit()
    
     def get_paragraph_count(self, table_name, col_name="Text", print_out=True):
         """Function returns the number of paragraphs per 'Text' in 'Documents'
@@ -152,35 +252,18 @@ class dbORM(object):
                 bar.update(i)
         return(paras)
     
-    def execute(self, command, commit=False):
-        """Execute command in db
-        
-        """
-        self.c.execute(command)
-        if commit is True:
-            self.commit()
-    
-    def commit(self):
-        """Commit command"""
-        self.con.commit()
-        
-    def fetch(self, what = "all"):
-        """docstring for fetch"""
-        if what.upper() == "ALL":
-            return self.c.fetchall()
-        elif what.upper() == "MANY":
-            return self.c.fetchmany()    
-        elif what.upper() == "ONE":
-            return self.c.fetchone()
-        else:
-            print("what must be element of 'all', 'many' or 'one'.")
+
+    """
+    Selecting data        
+            
+    """
             
     def select(self, table_name):
-        """docstring for select"""
-        self.execute('SELECT * FROM {tn}'.\
-                format(tn=table_name))
-        all_rows = self.c.fetchall()
-        return all_rows
+        """Select query to table"""
+        query = 'SELECT * FROM {tn}'.format(tn=table_name)
+        self.execute(query)
+        # all_rows = self.c.fetchall()
+        # return all_rows
     
     def select_where(self, table_name, col_name, match_string, limit = 5):
         """docstring for select_where"""
@@ -188,6 +271,17 @@ class dbORM(object):
         self.execute(cmd)
         result = self.fetch()
         return result
+    
+    def read_pandas(self, table_name, chunksize=None):
+        """Read a table as a pandas data frame"""
+        query = "SELECT * FROM {}".format(table_name)
+        df = pandas.read_sql_query(query, self.con, chunksize=chunksize)
+        return df
+    
+    """
+    Database info / statistics    
+        
+    """
        
     def count_rows(self, table_name, print_out=False):
         """ Returns the total number of rows in the database
@@ -235,7 +329,7 @@ class dbORM(object):
     
     def list_columns(self, table_name):
         """returns a list of columns in the table"""
-        self.c.execute('PRAGMA TABLE_INFO({})'.format(table_name))
+        self.execute('PRAGMA TABLE_INFO({})'.format(table_name))
         names = [tup[1] for tup in self.c.fetchall()]
         return names
     
@@ -243,48 +337,40 @@ class dbORM(object):
         """ Returns a dictionary with columns as keys and the number of not-null
             entries as associated values.
         """
-        self.c.execute('PRAGMA TABLE_INFO({})'.format(table_name))
-        info = self.c.fetchall()
+        self.execute('PRAGMA TABLE_INFO({})'.format(table_name))
+        info = self.fetch()
         col_dict = dict()
         for col in info:
             col_dict[col[1]] = 0
         for col in col_dict:
-            self.c.execute('SELECT ({0}) FROM {1} WHERE {0} IS NOT NULL'.format(col, table_name))
+            self.execute('SELECT ({0}) FROM {1} WHERE {0} IS NOT NULL'.format(col, table_name))
             # In my case this approach resulted in a better performance than using COUNT
-            number_rows = len(self.c.fetchall())
+            number_rows = len(self.fetch())
             col_dict[col] = number_rows
         if print_out:
             print("\nNumber of entries per column:")
             for i in col_dict.items():
                 print('{}: {}'.format(i[0], i[1]))  
-
-    def pack(self, method="zip", close_con=True):
-        """Compress the sql database in same directory
-        Closes connection by default
-
-        Defaults to zip, because its much faster than 7zip, although
-        it doesn't achieve as high a compression
-
-        The zip method will delete the database after compression
+    
+    """
+    Storing the database            
+                
+    """
+    
+    def pack(self):
+        """Compress the sql database in same directory and close connection
+        Deletes the original db after successful compression
         """
-        if close_con is True: self.close()
-        filename=self.__name__
-        if method=="7z":
-            subprocess.call(['7z', 'a', filename+'.7z', filename])
-        elif method=="zip":
-            zipfile.ZipFile(filename+'.zip','w',compression=zipfile.ZIP_DEFLATED).write(filename)
-            if zipfile.ZipFile(filename+'.zip','r').testzip() is None: os.remove(filename)
+        zipfile.ZipFile(filename + '.zip', 'w', compression=zipfile.ZIP_DEFLATED).write(filename)
+        if zipfile.ZipFile(filename+'.zip','r').testzip() is None:
+            os.remove(filename)
 
-    def unpack(self, method="zip"):
+    def unpack(self):
         """Decompress the sql database from 7z
 
         """
-        if method=="7z":
-            filename=self.__name__
-            subprocess.call(['7z', 'x', filename, filename+'.7z'])
-        elif method=="zip":
-            filename=self.__name__
-            zipfile.ZipFile(filename+'.zip').extract(filename)
+        filename=self.__name__
+        zipfile.ZipFile(filename+'.zip').extract(filename)
 
 
 
