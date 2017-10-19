@@ -45,7 +45,7 @@ class dbORM(object):
                 self.unpack()
         self.con = sqlite3.connect(self.__name__)
         self.c = self.con.cursor()
-        print("Connection established")
+        # print("Connection established")
         
     def close(self):
         """Close database connection"""
@@ -125,7 +125,7 @@ class dbORM(object):
             db.create_table('Sentiments', col_names = ["File", "Paragraph", "Text", "Sentiment"], col_types = ["TXT", "INT", "TXT", "INT"], other_columns = "PRIMARY KEY (File, Paragraph)")
             
         """
-        if overwrite:
+        if overwrite and table_name in self.list_tables():
             self.drop_table(table_name)
         ncols = len(col_names)
         if col_types is None:
@@ -258,23 +258,38 @@ class dbORM(object):
             
     """
             
-    def select(self, table_name):
-        """Select query to table"""
-        query = 'SELECT * FROM {tn}'.format(tn=table_name)
+    def select(self, what, where, fetch=None, arguments=None):
+        """Select query to table
+        
+        Fetch is optional, can be either 'all', 'first' or 'many'
+        
+        Optional arguments can be passed via `arguments`
+        
+        Returns nothing if fetch is None (default)
+        """
+        query = 'SELECT {} FROM {}'.format(what, where)
+        if arguments is not None:
+            query = query + " " + arguments
         self.execute(query)
-        # all_rows = self.c.fetchall()
-        # return all_rows
+        if fetch is not None:
+            res = self.fetch(fetch)
+            return res
     
-    def select_where(self, table_name, col_name, match_string, limit = 5):
-        """docstring for select_where"""
-        cmd="SELECT * FROM {} WHERE {} LIKE '%{}%' LIMIT {}".format(table_name, col_name, match_string, limit)
+    def select_like(self, what, where, like):
+        """Select entire table where a specific column contains text"""
+        cmd="SELECT * FROM {} WHERE {} LIKE '%{}%'".format(where, what, like)
         self.execute(cmd)
         result = self.fetch()
         return result
     
-    def read_pandas(self, table_name, chunksize=None):
-        """Read a table as a pandas data frame"""
-        query = "SELECT * FROM {}".format(table_name)
+    def get_pandas(self, table, arguments=None, chunksize=None):
+        """Return a database table as pandas dataframe
+        
+        Optional arguments can be passed via `arguments`
+        """
+        query = "SELECT * FROM {}".format(table)
+        if arguments is not None:
+            query = query + " " + arguments
         df = pandas.read_sql_query(query, self.con, chunksize=chunksize)
         return df
     
@@ -282,75 +297,118 @@ class dbORM(object):
     Database info / statistics    
         
     """
-       
-    def count_rows(self, table_name, print_out=False):
-        """ Returns the total number of rows in the database
-
-        """
-        self.c.execute('SELECT COUNT(*) FROM {}'.format(table_name))
-        count = self.c.fetchall()
-        if print_out:
-            print('\nTotal rows: {}'.format(count[0][0]))
-        return count[0][0]
-    
-    def count_rows_where(self, table_name, col_name, match_txt=None):
-        """Returns the total number of rows in the database containing `match_txt`
-        
-        """
-        cmd="SELECT COUNT(*) FROM {} WHERE {} LIKE '%{}%'".format(table_name, col_name, match_txt)
-        self.execute(cmd)
-        count =self.fetch()
-        return count[0][0]            
-    
-    def get_articles_count(self, match_txt=None, table_name="Documents", col_name="Text"):
-        """Shorthand function for count_rows_where() function for articles containing some text"""
-        result = self.count_rows_where(table_name, col_name, match_txt)
-        return result
     
     def list_tables(self):
-        """Returns list of all tables in database
+        """List tables in database
+        
+        Returns list
+        """
+        query="SELECT name FROM sqlite_master WHERE type='table';"
+        self.execute(query)
+        output = self.fetch()
+        tables = [t[0] for t in output]
+        return tables
+    
+    def list_columns(self, table):
+        """List columns in table
         
         """
-        self.c.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        print(self.c.fetchall())
+        query='PRAGMA TABLE_INFO({})'.format(table)
+        self.execute(query)
+        output = self.fetch()
+        columns = [tup[1] for tup in output]
+        return columns
     
-    def column_info(self, table_name):
-        """ Returns a list of tuples with column informations:
+    def pragma(self, table):
+        """Full pragma output for table
+        
+        Prints table with column information
             (id, name, type, notnull, default_value, primary_key)
+        
+        Returns nothing
         """
-        self.c.execute('PRAGMA TABLE_INFO({})'.format(table_name))
-        info = [list(tup) for tup in self.c.fetchall()]
+        query='PRAGMA TABLE_INFO({})'.format(table)
+        self.execute(query)
+        output = self.fetch()
+        info = [list(tup) for tup in output]
         print("\nColumn Info:\n{:10s}{:25s}{:10s}{:10s}{:12s}{:10s}"\
                .format("ID", "Name", "Type", "NotNull", "DefaultVal", "PrimaryKey"))
-
         for col in info:
             print_text=tuple(str(t) for t in col)
             print('{:10s}{:25s}{:10s}{:10s}{:12s}{:10s}'.format(*print_text))
     
-    def list_columns(self, table_name):
-        """returns a list of columns in the table"""
-        self.execute('PRAGMA TABLE_INFO({})'.format(table_name))
-        names = [tup[1] for tup in self.c.fetchall()]
-        return names
-    
-    def column_value_count(self, table_name, print_out=True):
-        """ Returns a dictionary with columns as keys and the number of not-null
-            entries as associated values.
+    def column_info(self, table):
+        """Summary information for columns in table
+        
+        Prints table with some pragma information plus actual not null count
+        
+        Returns nothing
         """
-        self.execute('PRAGMA TABLE_INFO({})'.format(table_name))
+        query = 'PRAGMA TABLE_INFO({})'.format(table)
+        self.execute(query)
         info = self.fetch()
-        col_dict = dict()
+        info = [list(i)[0:3] for i in info] # Only ID, Name, Type
+        columns = [i[1] for i in info] # Extract columns
+        for i, col in enumerate(columns):
+            count = self.count_notnull(col, table)
+            info[i].append(count)    
+        print("\nColumn Info:\n{:10s}{:25s}{:10s}{:10s}"\
+               .format("ID", "Name", "Type", "NotNull"))
         for col in info:
-            col_dict[col[1]] = 0
-        for col in col_dict:
-            self.execute('SELECT ({0}) FROM {1} WHERE {0} IS NOT NULL'.format(col, table_name))
-            # In my case this approach resulted in a better performance than using COUNT
-            number_rows = len(self.fetch())
-            col_dict[col] = number_rows
-        if print_out:
-            print("\nNumber of entries per column:")
-            for i in col_dict.items():
-                print('{}: {}'.format(i[0], i[1]))  
+            print_text=tuple(str(t) for t in col)
+            print('{:10s}{:25s}{:10s}{:10s}'.format(*print_text))
+       
+    def count(self, what, where):
+        """Count number of rows
+        
+        returns int
+
+        """
+        query = "SELECT COUNT({}) FROM {}".format(what, where)
+        self.execute(query)
+        count = self.fetch()
+        return int(count[0][0])
+    
+    def count_distinct(self):
+        """Count distinct entries
+        
+        Returns int
+        """
+        query = "SELECT COUNT(DISTINCT {}) FROM {}".format(what, where)
+        self.execute(query)
+        count = self.fetch()
+        return int(count[0][0])
+    
+    def count_notnull(self, what, where):
+        """Count non-null entries in column
+        
+        Returns int
+        """
+        query='SELECT COUNT({0}) FROM {1} WHERE {0} IS NOT NULL'.format(what, where)
+        self.execute(query)
+        count = self.fetch()
+        return int(count[0][0])
+        
+    def count_like(self, what, where, like):
+        """Count number of rows containing text (`like`)
+        
+        Returns int
+        """
+        cmd="SELECT COUNT({}) FROM {} WHERE {} LIKE '%{}%'".format(what, where, what, like)
+        self.execute(cmd)
+        count =self.fetch()
+        return count[0][0]            
+    
+    def count_articles(self, like):
+        """Count articles matching text (`like`)
+        
+        Shorthand function for count_like() with what='Text' and 
+        where='documents'
+        
+        Returns int
+        """
+        result = self.count_like(like=like, what="Text", where="Documents")
+        return result
     
     """
     Storing the database            
@@ -361,8 +419,10 @@ class dbORM(object):
         """Compress the sql database in same directory and close connection
         Deletes the original db after successful compression
         """
+        filename = self.__name__
         zipfile.ZipFile(filename + '.zip', 'w', compression=zipfile.ZIP_DEFLATED).write(filename)
         if zipfile.ZipFile(filename+'.zip','r').testzip() is None:
+            self.close()
             os.remove(filename)
 
     def unpack(self):
