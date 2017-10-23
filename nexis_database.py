@@ -10,7 +10,7 @@ import progressbar
 import subprocess
 import zipfile, zlib
 import csv
-import pandas
+import pandas as pd
 import numpy
 
 
@@ -105,7 +105,7 @@ class dbORM(object):
         """
         file_con = open(file, 'r')
         text = file_con.read()
-        return(text)
+        return str(text)
     
     
     """
@@ -113,83 +113,35 @@ class dbORM(object):
             
     """
     
-    def create_table(self, table_name, col_names, col_types=None, col_constraints=None, other_columns=None, overwrite=False):
+    def create_table(self, table, col_names, col_types=None, col_constraints=None, other_args=None, overwrite=False):
         """Create a table in the database
+        table must be provided
         col_names must be provided
         col_types defaults to TXT
-        col_constraints defaults to 
-        other_columns can manually specifiy columns 
+        col_constraints defaults to ""
+        other_args to add additional arguments
         
         Example usage: 
         
-            db.create_table('Sentiments', col_names = ["File", "Paragraph", "Text", "Sentiment"], col_types = ["TXT", "INT", "TXT", "INT"], other_columns = "PRIMARY KEY (File, Paragraph)")
+            db.create_table('Sentiments', col_names = ["File", "Paragraph", "Text", "Sentiment"], col_types = ["TXT", "INT", "TXT", "INT"], other_args = "PRIMARY KEY (File, Paragraph)")
             
         """
-        if overwrite and table_name in self.list_tables():
-            self.drop_table(table_name)
+        if overwrite and table in self.list_tables():
+            self.drop_table(table)
         ncols = len(col_names)
         if col_types is None:
             col_types = list(numpy.repeat("TXT", ncols))
         if col_constraints is None:
             col_constraints = list(numpy.repeat("", ncols))
         query = [' '.join([cn, cp, cc]) for cn, cp, cc in zip(col_names, col_types, col_constraints)]
-        query = "CREATE TABLE {} (".format(table_name) + ', '.join(query)
-        if other_columns is not None:
-            query = ', '.join([query, other_columns])
+        query = "CREATE TABLE {} (".format(table) + ', '.join(query)
+        if other_args is not None:
+            query = ', '.join([query, other_args])
         query = query + ")"
         self.execute(query)
         self.commit()
     
-    def insert_text_files(self, table_name, files_path, create_table=True):
-        """Adds many text files into a table in the 
-        database, using file name as ID
-        
-        table_name = table where to add the files
-        files_path = directory with text files
-    
-        """
-        if create_table is True:
-            self.create_table(table_name, "File")
-            self.add_column(table_name, "Text")
-        all_files = os.listdir(files_path)
-        txt_files = [f for f in all_files if ".txt" in f or ".TXT" in f]
-        with progressbar.ProgressBar(max_value=len(txt_files)) as bar:
-            for i, f in enumerate(txt_files):
-                file_path = os.path.join(files_path, f)
-                article_text = self.read_data(file_path)
-                data = [str(f), str(article_text)]
-                self.insert_data(table_name, str(f), str(article_text), commit=False)
-                bar.update(i)
-        self.con.commit()
-    
-    def insert_csv(self, table_name, csv_file, create_table=True):
-        """Add CSV file to a table in the database
-
-        """
-        if create_table: # Ensure first columns parsed as primary key
-            with open(csv_file, 'r') as f:
-                reader = csv.reader(f)
-                header=reader.__next__()
-                self.create_table(table_name, header[0])
-                for h in header[1:]:
-                    self.add_column(table_name, h)
-        df = pandas.read_csv(csv_file)
-        df.to_sql(table_name, self.con, if_exists='append', index=False)
-        # num_lines = len(open(csv_file, 'r').readlines())
-        #     else:
-        #         reader.__next__()
-        #     with progressbar.ProgressBar(max_value=num_lines) as bar:
-        #         for i, row in enumerate(reader):
-        #             print(*row)
-        #             self.insert_data(table_name, *row, commit=False)
-        #             bar.update(i)
-        # with open('data.csv','rb') as fin: # `with` statement available in 2.5+
-        #     # csv.DictReader uses first line in file for column headings by default
-        #     dr = csv.DictReader(fin) # comma is default delimiter
-        #     to_db = [(i['col1'], i['col2']) for i in dr]
-        self.con.commit()
-    
-    def insert_pandas(self, table_name, df, overwrite=False):
+    def insert_pandas(self, table, df, overwrite=False):
         """Inserts Pandas DataFrame object to a new or existing table
         
         Use create_table() first if column flags or so need to be set.
@@ -198,11 +150,43 @@ class dbORM(object):
         """
         if overwrite:
             try:
-                self.drop_table(table_name)
+                self.drop_table(table)
             except:
                 print("No existing table found")
-        df.to_sql(table_name, self.con, if_exists='append', index = False)
-        self.commit()
+        df.to_sql(table, self.con, if_exists='append', index = False)
+    
+    def insert_text_files(self, table, files_path, overwrite=False):
+        """Adds all txt files in given directory into a new table 
+        in the database, using the file name as ID
+        
+        table = name of new table where to add the files
+        files_path = directory with text files
+                
+        Returns nothing
+    
+        """
+        if overwrite:
+            try:
+                self.drop_table(table)
+            except:
+                print("No existing table found")
+        cols=["File", "Text"]
+        prim_key="PRIMARY KEY (File)"
+        p=files_path
+        self.create_table(table=table, col_names=cols, other_args=prim_key)
+        all_files=os.listdir(p)
+        txt_files=[(f,os.path.join(p,f)) for f in all_files if ".TXT" in f.upper()]
+        df = pd.DataFrame([(f[0], self.read_data(f[1])) for f in txt_files], columns=cols)
+        self.insert_pandas(table, df)
+
+    
+    def insert_csv(self, table, csv_file):
+        """Add CSV file to a table in the database
+        
+        Use create_table() first if column flags or so need to be set.
+        """
+        df = pd.read_csv(csv_file)
+        self.insert_pandas(table, df)
     
     
     """
@@ -210,48 +194,48 @@ class dbORM(object):
         
     """
         
-    def add_column(self, table_name, new_column, column_type="TEXT"):
-        """Add column to table"""
-        self.c.execute("ALTER TABLE {tn} ADD COLUMN '{cn}' {ct}"\
-                .format(tn=table_name, cn=new_column, ct=column_type))
-        self.con.commit()
-        
-    def insert_data(self, table_name, *data, commit=True):
-        """Insert a row of data into database table
-
-        """
-        columns=self.list_columns(table_name)
-        len_data = len(data)
-        column_names=', '.join(columns)
-        q_signs = ', '.join("?"*len_data)
-        com="INSERT INTO {tn} ({cn}) VALUES ({dt})".\
-                    format(tn=table_name, cn=column_names, dt=q_signs)
-        if len_data != len(columns):
-            print("Not enough values provided")
-        else:
-            try:
-                self.c.execute(com, data)
-            except sqlite3.IntegrityError:
-                print('ERROR: ID already exists in PRIMARY KEY column {}'.format(id_column))
-            if commit is True:
-                self.con.commit()
-   
-    def get_paragraph_count(self, table_name, col_name="Text", print_out=True):
-        """Function returns the number of paragraphs per 'Text' in 'Documents'
-        
-        """
-        num_docs = self.count_rows(table_name)
-        cmd="SELECT {} FROM {} LIMIT ".format(col_name,table_name)
-        paras = []
-        with progressbar.ProgressBar(max_value=num_docs) as bar:
-            for i in range(1,num_docs+1):
-                self.execute(cmd+str(i))
-                text = self.c.fetchall()
-                pars = text[0][0].count('\n\n')+1
-                paras.append(pars)
-                bar.update(i)
-        return(paras)
-    
+    # def add_column(self, table_name, new_column, column_type="TEXT"):
+    #     """Add column to table"""
+    #     self.c.execute("ALTER TABLE {tn} ADD COLUMN '{cn}' {ct}"\
+    #             .format(tn=table_name, cn=new_column, ct=column_type))
+    #     self.con.commit()
+    #
+    # def insert_data(self, table_name, *data, commit=True):
+    #     """Insert a row of data into database table
+    #
+    #     """
+    #     columns=self.list_columns(table_name)
+    #     len_data = len(data)
+    #     column_names=', '.join(columns)
+    #     q_signs = ', '.join("?"*len_data)
+    #     com="INSERT INTO {tn} ({cn}) VALUES ({dt})".\
+    #                 format(tn=table_name, cn=column_names, dt=q_signs)
+    #     if len_data != len(columns):
+    #         print("Not enough values provided")
+    #     else:
+    #         try:
+    #             self.execute(com, data)
+    #         except sqlite3.IntegrityError:
+    #             print('ERROR: ID already exists in PRIMARY KEY column {}'.format(id_column))
+    # #         if commit is True:
+    # #             self.commit()
+    #
+    # def get_paragraph_count(self, table_name, col_name="Text", print_out=True):
+    #     """Function returns the number of paragraphs per 'Text' in 'Documents'
+    #
+    #     """
+    #     num_docs = self.count_rows(table_name)
+    #     cmd="SELECT {} FROM {} LIMIT ".format(col_name,table_name)
+    #     paras = []
+    #     with progressbar.ProgressBar(max_value=num_docs) as bar:
+    #         for i in range(1,num_docs+1):
+    #             self.execute(cmd+str(i))
+    #             text = self.c.fetchall()
+    #             pars = text[0][0].count('\n\n')+1
+    #             paras.append(pars)
+    #             bar.update(i)
+    #     return(paras)
+    #   
 
     """
     Selecting data        
@@ -290,7 +274,7 @@ class dbORM(object):
         query = "SELECT * FROM {}".format(table)
         if arguments is not None:
             query = query + " " + arguments
-        df = pandas.read_sql_query(query, self.con, chunksize=chunksize)
+        df = pd.read_sql_query(query, self.con, chunksize=chunksize)
         return df
     
     """
@@ -417,7 +401,10 @@ class dbORM(object):
     
     def pack(self):
         """Compress the sql database in same directory and close connection
+        
         Deletes the original db after successful compression
+        
+        Returns nothing
         """
         filename = self.__name__
         zipfile.ZipFile(filename + '.zip', 'w', compression=zipfile.ZIP_DEFLATED).write(filename)
