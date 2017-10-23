@@ -190,54 +190,6 @@ class dbORM(object):
     
     
     """
-    Altering tables    
-        
-    """
-        
-    # def add_column(self, table_name, new_column, column_type="TEXT"):
-    #     """Add column to table"""
-    #     self.c.execute("ALTER TABLE {tn} ADD COLUMN '{cn}' {ct}"\
-    #             .format(tn=table_name, cn=new_column, ct=column_type))
-    #     self.con.commit()
-    #
-    # def insert_data(self, table_name, *data, commit=True):
-    #     """Insert a row of data into database table
-    #
-    #     """
-    #     columns=self.list_columns(table_name)
-    #     len_data = len(data)
-    #     column_names=', '.join(columns)
-    #     q_signs = ', '.join("?"*len_data)
-    #     com="INSERT INTO {tn} ({cn}) VALUES ({dt})".\
-    #                 format(tn=table_name, cn=column_names, dt=q_signs)
-    #     if len_data != len(columns):
-    #         print("Not enough values provided")
-    #     else:
-    #         try:
-    #             self.execute(com, data)
-    #         except sqlite3.IntegrityError:
-    #             print('ERROR: ID already exists in PRIMARY KEY column {}'.format(id_column))
-    # #         if commit is True:
-    # #             self.commit()
-    #
-    # def get_paragraph_count(self, table_name, col_name="Text", print_out=True):
-    #     """Function returns the number of paragraphs per 'Text' in 'Documents'
-    #
-    #     """
-    #     num_docs = self.count_rows(table_name)
-    #     cmd="SELECT {} FROM {} LIMIT ".format(col_name,table_name)
-    #     paras = []
-    #     with progressbar.ProgressBar(max_value=num_docs) as bar:
-    #         for i in range(1,num_docs+1):
-    #             self.execute(cmd+str(i))
-    #             text = self.c.fetchall()
-    #             pars = text[0][0].count('\n\n')+1
-    #             paras.append(pars)
-    #             bar.update(i)
-    #     return(paras)
-    #   
-
-    """
     Selecting data        
             
     """

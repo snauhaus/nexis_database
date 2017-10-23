@@ -1,5 +1,6 @@
 Nexis database
 ==============
+
 Create SQlite3 database from nexis articles preprocessed using [lexisparse](https://github.com/FreshRamen/lexisparse).
 
 Provides functions and handlers to interact with the database.
@@ -9,6 +10,7 @@ I originally wrote the module to add cleaned files to an SQLite database (which 
 
 ## Example
 	import nexis_database as n
+	
     db = n.dbORM(file_name='Nexis Articles.db')
     db.connect()
 
