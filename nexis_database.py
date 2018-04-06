@@ -180,13 +180,13 @@ class dbORM(object):
         self.insert_pandas(table, df)
 
     
-    def insert_csv(self, table, csv_file):
+    def insert_csv(self, table, csv_file, overwrite=False):
         """Add CSV file to a table in the database
         
         Use create_table() first if column flags or so need to be set.
         """
         df = pd.read_csv(csv_file)
-        self.insert_pandas(table, df)
+        self.insert_pandas(table, df, overwrite=overwrite)
     
     
     """
@@ -194,8 +194,10 @@ class dbORM(object):
             
     """
             
-    def select(self, what, where, fetch=None, arguments=None):
+    def select(self, table, fetch=None, arguments=None):
         """Select query to table
+        
+        What defaults to all ('*')
         
         Fetch is optional, can be either 'all', 'first' or 'many'
         
@@ -203,27 +205,42 @@ class dbORM(object):
         
         Returns nothing if fetch is None (default)
         """
-        query = 'SELECT {} FROM {}'.format(what, where)
+        query = 'SELECT * FROM {}'.format(table)
         if arguments is not None:
             query = query + " " + arguments
         self.execute(query)
         if fetch is not None:
             res = self.fetch(fetch)
             return res
-    
-    def select_like(self, what, where, like):
+        
+    def select_where(self, table, condition):
+        """Select * where condition is met"""
+        query = 'SELECT * FROM {} WHERE {}'.format(table, condition)
+        self.execute(query)
+        result = self.fetch()
+        return result
+        
+    def select_like(self, table, where, like):
         """Select entire table where a specific column contains text"""
-        cmd="SELECT * FROM {} WHERE {} LIKE '%{}%'".format(where, what, like)
+        cmd="SELECT * FROM {} WHERE {} LIKE '%{}%'".format(table, where, like)
         self.execute(cmd)
         result = self.fetch()
         return result
     
-    def get_pandas(self, table, arguments=None, chunksize=None):
+    def select_articles(self, like):
+        """Get articles where text contains like
+        Shorthand for select_like
+        """
+        result = self.select_like(table='Documents', where='Text', like=like)
+        return result
+    
+    def get_pandas(self, table, columns="*", arguments=None, chunksize=None):
         """Return a database table as pandas dataframe
         
         Optional arguments can be passed via `arguments`
         """
-        query = "SELECT * FROM {}".format(table)
+        if type(columns) is list: columns=','.join(columns)    
+        query = "SELECT {} FROM {}".format(columns, table)
         if arguments is not None:
             query = query + " " + arguments
         df = pd.read_sql_query(query, self.con, chunksize=chunksize)
@@ -294,23 +311,30 @@ class dbORM(object):
             print_text=tuple(str(t) for t in col)
             print('{:10s}{:25s}{:10s}{:10s}'.format(*print_text))
        
-    def count(self, what, where):
+    def count(self, column, table):
         """Count number of rows
         
         returns int
 
         """
-        query = "SELECT COUNT({}) FROM {}".format(what, where)
+        query = "SELECT COUNT({}) FROM {}".format(column, table)
         self.execute(query)
         count = self.fetch()
         return int(count[0][0])
     
-    def count_distinct(self):
+    def count_where(self, column, table, condition):
+        """count rows where condition is met"""
+        query = "SELECT COUNT({}) FROM {} WHERE {}".format(column, table, condition)
+        self.execute(query)
+        count = self.fetch()
+        return int(count[0][0])
+    
+    def count_distinct(self, column, table):
         """Count distinct entries
         
         Returns int
         """
-        query = "SELECT COUNT(DISTINCT {}) FROM {}".format(what, where)
+        query = "SELECT COUNT(DISTINCT {}) FROM {}".format(column, table)
         self.execute(query)
         count = self.fetch()
         return int(count[0][0])
