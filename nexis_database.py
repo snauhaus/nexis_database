@@ -12,6 +12,7 @@ import zipfile, zlib
 import csv
 import pandas as pd
 import numpy
+import glob
 
 
 class dbORM(object):
@@ -20,7 +21,8 @@ class dbORM(object):
     
     Primarily to store articles cleaned by lexisparse
     
-    But it could be used with any other large folder of text files
+    But it could be used with any other large folder of text files, or any SQLite
+    database for that matter.
     
     """
     def __init__(self, file_name='Nexis Articles.db'):
@@ -98,7 +100,7 @@ class dbORM(object):
         
     """
             
-    def read_data(self, file):
+    def read_text(self, file):
         """
         Read a text file from disk
         
@@ -114,8 +116,10 @@ class dbORM(object):
     """
     
     def create_table(self, table, col_names, col_types=None, col_constraints=None, other_args=None, overwrite=False):
-        """Create a table in the database
-        table must be provided
+        """
+        Create a table in the database
+        
+        table (name) must be provided
         col_names must be provided
         col_types defaults to TXT
         col_constraints defaults to ""
@@ -165,20 +169,20 @@ class dbORM(object):
         Returns nothing
     
         """
+        cols=["File", "Text"]
+        p=files_path
         if overwrite:
             try:
                 self.drop_table(table)
             except:
                 print("No existing table found")
-        cols=["File", "Text"]
-        prim_key="PRIMARY KEY (File)"
-        p=files_path
-        self.create_table(table=table, col_names=cols, other_args=prim_key)
+            prim_key="PRIMARY KEY (File)"
+            self.create_table(table=table, col_names=cols, other_args=prim_key)
         all_files=os.listdir(p)
         txt_files=[(f,os.path.join(p,f)) for f in all_files if ".TXT" in f.upper()]
-        df = pd.DataFrame([(f[0], self.read_data(f[1])) for f in txt_files], columns=cols)
+        df = pd.DataFrame([(f[0], self.read_text(f[1])) for f in txt_files], columns=cols)
         self.insert_pandas(table, df)
-
+    
     
     def insert_csv(self, table, csv_file, overwrite=False):
         """Add CSV file to a table in the database
@@ -193,7 +197,7 @@ class dbORM(object):
     Selecting data        
             
     """
-            
+    
     def select(self, table, fetch=None, arguments=None):
         """Select query to table
         
@@ -212,7 +216,13 @@ class dbORM(object):
         if fetch is not None:
             res = self.fetch(fetch)
             return res
-        
+    
+    def select_query(self, query):
+        """Send full select query to database and return results"""
+        self.execute(query)
+        result = self.fetch()
+        return result
+    
     def select_where(self, table, condition):
         """Select * where condition is met"""
         query = 'SELECT * FROM {} WHERE {}'.format(table, condition)
