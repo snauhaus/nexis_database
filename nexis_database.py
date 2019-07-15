@@ -26,7 +26,9 @@ class dbORM(object):
     
     """
     def __init__(self, file_name='Nexis Articles.db'):
+        super(dbORM, self).__init__()
         self.__name__ = file_name
+        
     
     """
     Basic database interactions.    
